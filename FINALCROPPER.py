@@ -1,22 +1,11 @@
 import cv2
 import sys
 import os
-from os import listdir
 from matplotlib import pyplot as plt
-#from PIL import Image
-#import datetime as dt
+import argparse
+import logging
 
-#user supplied values
-#imagePath = "111.jpg"
-#imagePath = sys.argv[1]
-
-cascPath1 = "haarcascade_frontalface_default.xml"
-skiprate = 28 #default skiprate = 28 frames
-pOut = pathOut = "./out/"
-pIn = pathIn = "./in/"
-
-
-def crop_faces_from_video (pathIn, pathOut, cascPath1, sr):
+def crop_faces_from_video (pathIn, pathOut, cascPath1, sr, log):
     cap=cv2.VideoCapture(pathIn)
     faceCascade = cv2.CascadeClassifier(cascPath1)
     ret, frame = cap.read()
@@ -41,22 +30,16 @@ def crop_faces_from_video (pathIn, pathOut, cascPath1, sr):
                     os.makedirs(pathOut + str(sr) + '/')
                 plt.savefig(pathOut + str(sr) + '/' + "_plt%d_%03d.png" % (i, i))
                 i += 1
-            print("Cropped {0} faces".format(len(faces)) + ' on frame ' + str(j))
+            log.info("Cropped {0} faces".format(len(faces)) + ' on frame ' + str(j))
             faces_amount += len(faces)
-
         j += 1
         ret, frame = cap.read()
-
-    print("::::::\n\tCROPPED FACES TOTAL AMMOUNT: \t"+str(faces_amount))
-    print(":::::::::\n\tSKIPRATE: \t"+str(sr))
-    print("...........\n..........\n...\n...CROPPER.FIN...\n.........\n......\n...")
     cap.release()
     return(faces_amount)
 
 
-def crop_faces (pathIn, pathOut, cascPath1):
+def crop_faces (pathIn, pathOut, cascPath1, log):
     i=0
-    print("............\n.................\n..........\n...CROPPER.START...\n........\n....\n...\n..\n.")
     plt.rcParams['text.usetex'] = False
     plt.figure(figsize=(2, 2))
     plt.axis('off')
@@ -69,10 +52,12 @@ def crop_faces (pathIn, pathOut, cascPath1):
 
     for img in imgIn:
         imagePath = pathIn + img
-        #print("..processing "+img)
+        log.info(f"..processing image file: {img}")
         #read the image
         image = cv2.imread(imagePath)
+        log.info('imread complete')
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        log.info('greyscale complete')
         #detect faces in the image
         faces = faceCascade.detectMultiScale(
             gray,
@@ -90,30 +75,61 @@ def crop_faces (pathIn, pathOut, cascPath1):
                 i+=1
 
         faces_amount += len(faces)
-        print("Cropped {0} faces".format(len(faces))+' from: \t' + img)
+        log.info("Cropped {0} faces".format(len(faces))+' from: \t' + img)
 
-    print("\n\tPROCESSED IMGS TOTAL AMMOUNT: \t"+str(len(imgIn)))
-    print("::::::\n\tCROPPED FACES TOTAL AMMOUNT: \t"+str(faces_amount))
-    print("...........\n..........\n...\n...CROPPER.FIN...\n.........\n......\n...")
+    log.info("\n\tPROCESSED IMGS TOTAL AMMOUNT: \t"+str(len(imgIn)))
     return(faces_amount)
 
-
-while (True):
-    Inp=input("*\n* * *\n* * * * * *\n* * * * * * * * *\n* * * * * * * * * * * *\n* * CROPPER * * * * * * * *\n* * * * * * VER. 1.88 * * * * * * * * *\n* * * * * * * * * * * * * * * * * * *\nchose input(v for video mode, q to quit):\t")
-    if Inp =='q':
-        break
-    if Inp =='v':
-        Inp = input("\n * * * * * * \n * * * * * *  * * * * * * \n * * * * * * VIDEO MODE ON * * * * * * \n * * * * * * chose video input:\t")
-        skiprate = input("\n * * * * * * \n * * * * enter SKIPRATE (28 by default):\t")
-        pIn = pathIn + "VID/" + Inp + ".mpg"
-        pOut = pathOut + "VID/" + Inp + "/"
-        print(pIn)
-        crop_faces_from_video(pIn, pOut, cascPath1, skiprate)
+# do all stuff
+if __name__ == "__main__":
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument('-i', '--input_path',    default=None,                                   type=str,   help='Path to a image, directory containig images or video. (str, default: None)')
+    argparser.add_argument('-o', '--output_path',   default="./out/",                               type=str,   help='output path, str, defaults to \"output\" directory')
+    argparser.add_argument('-v', '--video_input',   default=False,                                  type=bool,  help='Video input (bool, default is False).')
+    argparser.add_argument('-s', '--skiprate',      default=28,                                     type=int,   help='optional skiprate (int, for video only, default is 28).')
+    argparser.add_argument('-c', '--cascade_path',  default="haarcascade_frontalface_default.xml",  type=str,   help='haar cascade filename path.')
+    argparser.add_argument('-l', '--log_path',      default='./new_log.log',                        type=str,   help='optional log filename.')
+    
+    args = argparser.parse_args()
+    log_file = args.log_path
+    if log_file:
+        logging.basicConfig(filename = log_file,
+                            filemode = 'a',
+                            format = '%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                            datefmt = '%H:%M:%S',
+                            level = logging.INFO)
     else:
-        if not Inp=='':
-            pIn = pathIn + Inp + "/"
-            pOut = pathOut + Inp + "/"
-        crop_faces(pIn, pOut, cascPath1)
-    #print("CROPPED FACES TOTAL AMMOUNT: "+str(crop_faces(pIn, pOut,cascPath1)))
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+        logging.basicConfig(level = logging.INFO)
+    
+    log = logging.getLogger("opencv_haar_cascade_face_cropping_script")
+
+    if args.video_input:
+        log.info('Video mode is on')
+        log.info(f'Chosen skiprate is {args.skiprate}.')
+        try:
+            faces_amount = crop_faces_from_video(
+                args.input_path, args.output_path, args.cascade_path, args.skiprate, log)
+            log.info('Success!')
+            log.info(f"CROPPED FACES TOTAL AMOUNT: {faces_amount}.")
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
+            sys.exit(0)
+        except Exception as err:
+            log.info('Error occured!')
+            log.info(' %s' % err)
+            sys.exit(1)
+    else: 
+        try:
+            if os.path.isdir(args.input_path):
+                args.input_path += '\\'
+            faces_amount = crop_faces(
+                args.input_path, args.output_path, args.cascade_path, log)
+            log.info('Success!')
+            log.info(f"CROPPED FACES TOTAL AMOUNT: {faces_amount}.")
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
+            sys.exit(0)
+        except Exception as err:
+            log.info('Error occured!')
+            log.info(' %s' % err)
+            sys.exit(1)
